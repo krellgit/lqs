@@ -11,12 +11,13 @@ import {
 
 // Main calculator function
 export function calculateLQS(data: PipelineOutput): LQSResult {
-  const keywordOptimization = calculateKeywordOptimization(data);
-  const uspEffectiveness = calculateUSPEffectiveness(data);
-  const readability = calculateReadability(data);
-  const competitivePosition = calculateCompetitivePosition(data);
-  const customerAlignment = calculateCustomerAlignment(data);
-  const compliance = calculateCompliance(data);
+  try {
+    const keywordOptimization = calculateKeywordOptimization(data);
+    const uspEffectiveness = calculateUSPEffectiveness(data);
+    const readability = calculateReadability(data);
+    const competitivePosition = calculateCompetitivePosition(data);
+    const customerAlignment = calculateCustomerAlignment(data);
+    const compliance = calculateCompliance(data);
 
   const lqsTotal =
     keywordOptimization.weighted +
@@ -35,21 +36,26 @@ export function calculateLQS(data: PipelineOutput): LQSResult {
     compliance: compliance,
   });
 
-  return {
-    lqs_total: Math.round(lqsTotal * 10) / 10,
-    grade: getGrade(lqsTotal),
-    dimensions: {
-      keyword_optimization: keywordOptimization,
-      usp_effectiveness: uspEffectiveness,
-      readability: readability,
-      competitive_position: competitivePosition,
-      customer_alignment: customerAlignment,
-      compliance: compliance,
-    },
-    recommendations,
-    calculated_at: new Date().toISOString(),
-    asin: data.ASIN,
-  };
+    return {
+      lqs_total: Math.round(lqsTotal * 10) / 10,
+      grade: getGrade(lqsTotal),
+      dimensions: {
+        keyword_optimization: keywordOptimization,
+        usp_effectiveness: uspEffectiveness,
+        readability: readability,
+        competitive_position: competitivePosition,
+        customer_alignment: customerAlignment,
+        compliance: compliance,
+      },
+      recommendations,
+      calculated_at: new Date().toISOString(),
+      asin: data.ASIN,
+    };
+  } catch (error) {
+    console.error('LQS calculation error for ASIN', data.ASIN, ':', error);
+    // Return a minimal result with error indication
+    throw error;
+  }
 }
 
 function getGrade(score: number): Grade {
@@ -209,9 +215,11 @@ function calculateDifferentiation(data: PipelineOutput): number {
 
   let totalDiff = 0;
   bullets.forEach(bullet => {
-    const similarities = competitorBullets.map(cb =>
-      stringSimilarity.compareTwoStrings(bullet.toLowerCase(), cb.toLowerCase())
-    );
+    if (!bullet) return;
+
+    const similarities = competitorBullets
+      .filter(cb => cb && typeof cb === 'string')
+      .map(cb => stringSimilarity.compareTwoStrings(bullet.toLowerCase(), cb.toLowerCase()));
     const maxSimilarity = Math.max(...similarities, 0);
 
     // Score inversely proportional to similarity
@@ -305,6 +313,8 @@ function calculateScannability(bullets: string[]): number {
   let totalScore = 0;
 
   bullets.forEach(bullet => {
+    if (!bullet || typeof bullet !== 'string') return;
+
     let bulletScore = 0;
 
     // Starts with capitalized feature phrase
@@ -336,6 +346,8 @@ function calculateScannability(bullets: string[]): number {
 }
 
 function calculateTitleClarity(title: string): number {
+  if (!title) return 60; // Default score if no title
+
   let score = 0;
 
   // Appropriate length (150-200 chars optimal for Amazon)
@@ -451,9 +463,11 @@ function calculateValuePropUniqueness(
 
   let uniquenessScore = 0;
   ourBullets.forEach(bullet => {
-    const similarities = competitorBullets.map(cb =>
-      stringSimilarity.compareTwoStrings(bullet.toLowerCase(), cb.toLowerCase())
-    );
+    if (!bullet) return;
+
+    const similarities = competitorBullets
+      .filter(cb => cb && typeof cb === 'string')
+      .map(cb => stringSimilarity.compareTwoStrings(bullet.toLowerCase(), cb.toLowerCase()));
     const maxSim = Math.max(...similarities, 0);
 
     if (maxSim < 0.4) uniquenessScore += 1;
@@ -517,8 +531,10 @@ function calculateThemeCoverage(
 
   let covered = 0;
   themes.forEach(theme => {
+    if (!theme || !theme.theme) return;
+
     const themeWords = theme.theme.toLowerCase().split(/\s+/);
-    const keywordMatches = theme.keywords?.some(kw => content.includes(kw.toLowerCase()));
+    const keywordMatches = theme.keywords?.some(kw => kw && content.includes(kw.toLowerCase()));
     const themeMatch = themeWords.some(tw => tw.length > 3 && content.includes(tw));
 
     if (keywordMatches || themeMatch) covered++;
@@ -538,6 +554,8 @@ function calculatePainPointAddressing(
 
   let addressed = 0;
   painPoints.forEach(pp => {
+    if (!pp || typeof pp !== 'string') return;
+
     const ppLower = pp.toLowerCase();
     const ppWords = ppLower.split(/\s+/).filter(w => w.length > 3);
 
