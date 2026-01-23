@@ -77,10 +77,13 @@ export async function GET(): Promise<NextResponse<ScoresResponse>> {
         // Extract product name from Content
         const productName = pipelineOutput.Content?.title?.split(',')[0] ||
                            pipelineOutput.Content?.title?.substring(0, 50) ||
-                           file.asin;
+                           pipelineOutput.ASIN;
+
+        // Use ASIN from JSON content (B followed by 9 chars), not filename
+        const asin = pipelineOutput.ASIN || file.asin;
 
         scores.push({
-          asin: file.asin,
+          asin: asin,
           msku: pipelineOutput.MSKU,
           productName,
           lqs: lqsResult,
