@@ -60,6 +60,31 @@ function getGrade(score: number): Grade {
   return 'F';
 }
 
+// Helper to extract keyword text
+function getKeywordText(kw: { keyword?: string; keyword_text?: string; keyword_canonical?: string }): string {
+  return kw.keyword || kw.keyword_text || kw.keyword_canonical || '';
+}
+
+// Helper to get keywords from package (handles both flat and nested structures)
+function getKeywords(data: PipelineOutput, tier: 'primary' | 'secondary' | 'long_tail'): string[] {
+  const pkg = data.keyword_package;
+  if (!pkg) return [];
+
+  // Try flat structure first
+  const flatKeywords = pkg[tier];
+  if (flatKeywords && flatKeywords.length > 0) {
+    return flatKeywords.map(k => getKeywordText(k).toLowerCase()).filter(k => k.length > 0);
+  }
+
+  // Try nested structure
+  const nestedKeywords = pkg.keyword_sets?.[tier];
+  if (nestedKeywords && nestedKeywords.length > 0) {
+    return nestedKeywords.map(k => getKeywordText(k).toLowerCase()).filter(k => k.length > 0);
+  }
+
+  return [];
+}
+
 // 1. Keyword Optimization (25%)
 function calculateKeywordOptimization(data: PipelineOutput): DimensionResult {
   const flags: string[] = [];
@@ -69,8 +94,8 @@ function calculateKeywordOptimization(data: PipelineOutput): DimensionResult {
   const coverage = data.listing_creation?.quality_report?.keyword_coverage ?? 70;
 
   // Calculate title placement
-  const primaryKeywords = data.keyword_package?.primary?.map(k => k.keyword.toLowerCase()) ?? [];
-  const title = data.Content.title.toLowerCase();
+  const primaryKeywords = getKeywords(data, 'primary');
+  const title = data.Content?.title?.toLowerCase() || '';
 
   let primaryInTitle = 0;
   primaryKeywords.forEach(kw => {
@@ -104,12 +129,12 @@ function calculateKeywordOptimization(data: PipelineOutput): DimensionResult {
 }
 
 function calculateTierAlignment(data: PipelineOutput): number {
-  const title = data.Content.title.toLowerCase();
-  const bullets = data.Content.bullet_points.map(b => b.toLowerCase());
-  const description = data.Content.description?.toLowerCase() ?? '';
+  const title = data.Content?.title?.toLowerCase() || '';
+  const bullets = (data.Content?.bullet_points || []).map(b => b.toLowerCase());
+  const description = data.Content?.description?.toLowerCase() ?? '';
 
-  const primary = data.keyword_package?.primary?.map(k => k.keyword.toLowerCase()) ?? [];
-  const secondary = data.keyword_package?.secondary?.map(k => k.keyword.toLowerCase()) ?? [];
+  const primary = getKeywords(data, 'primary');
+  const secondary = getKeywords(data, 'secondary');
 
   let score = 0;
   let maxScore = 0;
@@ -174,7 +199,7 @@ function calculateUSPEffectiveness(data: PipelineOutput): DimensionResult {
 }
 
 function calculateDifferentiation(data: PipelineOutput): number {
-  const bullets = data.Content.bullet_points;
+  const bullets = data.Content?.bullet_points || [];
   const competitors = data.competitor_list_final ?? [];
 
   if (competitors.length === 0) return 75; // Default if no competitor data
@@ -200,7 +225,7 @@ function calculateDifferentiation(data: PipelineOutput): number {
 }
 
 function calculateProofStrength(data: PipelineOutput): number {
-  const content = [data.Content.title, ...data.Content.bullet_points].join(' ');
+  const content = [data.Content?.title || '', ...(data.Content?.bullet_points || [])].join(' ');
 
   let score = 0;
   const checks = {
@@ -225,7 +250,7 @@ function calculateReadability(data: PipelineOutput): DimensionResult {
   const flags: string[] = [];
   const weight = DIMENSION_WEIGHTS.readability;
 
-  const allText = [data.Content.title, ...data.Content.bullet_points].join(' ');
+  const allText = [data.Content?.title || '', ...(data.Content?.bullet_points || [])].join(' ');
 
   // Flesch Reading Ease
   const fleschScore = calculateFleschScore(allText);
@@ -236,10 +261,10 @@ function calculateReadability(data: PipelineOutput): DimensionResult {
   }
 
   // Scannability
-  const scannability = calculateScannability(data.Content.bullet_points);
+  const scannability = calculateScannability(data.Content?.bullet_points || []);
 
   // Title clarity
-  const titleClarity = calculateTitleClarity(data.Content.title);
+  const titleClarity = calculateTitleClarity(data.Content?.title || '');
 
   const score = 0.40 * fleschNormalized + 0.35 * scannability + 0.25 * titleClarity;
 
@@ -391,8 +416,8 @@ function calculateKeywordDifferentiation(
   competitors: NonNullable<PipelineOutput['competitor_list_final']>
 ): number {
   const ourKeywords = [
-    ...(data.keyword_package?.primary?.map(k => k.keyword.toLowerCase()) ?? []),
-    ...(data.keyword_package?.secondary?.map(k => k.keyword.toLowerCase()) ?? []),
+    ...getKeywords(data, 'primary'),
+    ...getKeywords(data, 'secondary'),
   ];
 
   if (ourKeywords.length === 0) return 70;
@@ -419,7 +444,7 @@ function calculateValuePropUniqueness(
   data: PipelineOutput,
   competitors: NonNullable<PipelineOutput['competitor_list_final']>
 ): number {
-  const ourBullets = data.Content.bullet_points;
+  const ourBullets = data.Content?.bullet_points || [];
   const competitorBullets = competitors.flatMap(c => c.bullets ?? []);
 
   if (competitorBullets.length === 0) return 75;
@@ -486,7 +511,7 @@ function calculateThemeCoverage(
   data: PipelineOutput,
   themes: NonNullable<PipelineOutput['intent_themes_processed']>
 ): number {
-  const content = [data.Content.title, ...data.Content.bullet_points, data.Content.description ?? '']
+  const content = [data.Content?.title || '', ...(data.Content?.bullet_points || []), data.Content?.description ?? '']
     .join(' ')
     .toLowerCase();
 
@@ -509,7 +534,7 @@ function calculatePainPointAddressing(
   const painPoints = themes.flatMap(t => t.pain_points ?? []);
   if (painPoints.length === 0) return 75;
 
-  const bullets = data.Content.bullet_points.map(b => b.toLowerCase());
+  const bullets = (data.Content?.bullet_points || []).map(b => b.toLowerCase());
 
   let addressed = 0;
   painPoints.forEach(pp => {
@@ -567,16 +592,19 @@ function calculateCompliance(data: PipelineOutput): DimensionResult {
 function calculateFormatCompliance(data: PipelineOutput): number {
   let score = 0;
 
+  const title = data.Content?.title || '';
+  const bullets = data.Content?.bullet_points || [];
+
   // Title length <= 200 chars
-  if (data.Content.title.length <= 200) score += 20;
-  else if (data.Content.title.length <= 250) score += 10;
+  if (title.length <= 200) score += 20;
+  else if (title.length <= 250) score += 10;
 
   // Each bullet <= 500 chars
-  const bulletLengthOk = data.Content.bullet_points.every(b => b.length <= 500);
+  const bulletLengthOk = bullets.every(b => b.length <= 500);
   if (bulletLengthOk) score += 20;
 
   // No HTML tags
-  const allContent = [data.Content.title, ...data.Content.bullet_points].join(' ');
+  const allContent = [title, ...bullets].join(' ');
   if (!/<[^>]+>/.test(allContent)) score += 20;
 
   // No prohibited characters (unless in brand context)

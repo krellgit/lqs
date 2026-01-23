@@ -26,6 +26,13 @@ export interface PipelineOutput {
     primary?: Keyword[];
     secondary?: Keyword[];
     long_tail?: Keyword[];
+    // Alternative nested structure
+    keyword_sets?: {
+      primary?: Keyword[];
+      secondary?: Keyword[];
+      long_tail?: Keyword[];
+      excluded?: Keyword[];
+    };
   };
   intent_themes_processed?: IntentTheme[];
   competitor_list_final?: Competitor[];
@@ -39,8 +46,11 @@ export interface USP {
 }
 
 export interface Keyword {
-  keyword: string;
+  keyword?: string;
+  keyword_text?: string;
+  keyword_canonical?: string;
   score?: number;
+  keyword_strength_score?: number;
   tier?: string;
 }
 
