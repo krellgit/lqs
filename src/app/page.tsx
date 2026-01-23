@@ -68,16 +68,11 @@ export default function Home() {
       setMeta(data.meta || null);
       setLastUpdated(data.meta?.timestamp || new Date().toISOString());
       setLoadingState('loaded');
-
-      // Auto-select first entry if available
-      if (data.scores && data.scores.length > 0 && !selectedEntry) {
-        setSelectedEntry(data.scores[0]);
-      }
     } catch (err) {
       setLoadingState('error');
       setErrorMessage(err instanceof Error ? err.message : 'Failed to fetch scores');
     }
-  }, [selectedEntry]);
+  }, []);
 
   useEffect(() => {
     fetchScores();
@@ -85,6 +80,10 @@ export default function Home() {
 
   const handleSelect = (entry: ScoreEntry) => {
     setSelectedEntry(entry);
+    // Scroll to detail section
+    setTimeout(() => {
+      document.getElementById('detail-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   };
 
   const handleCloseDetail = () => {
@@ -139,7 +138,7 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-full mx-auto px-6 py-6">
+      <main className="flex-1 max-w-[1800px] mx-auto w-full px-6 py-6">
         {/* Not Configured State */}
         {loadingState === 'not_configured' && (
           <div className="max-w-2xl mx-auto py-12">
@@ -202,44 +201,52 @@ export default function Home() {
         {/* Loaded State */}
         {loadingState === 'loaded' && (
           <div className="space-y-6">
-            {/* Stats Overview */}
+            {/* Stats Overview - Top */}
             <StatsOverview scores={scores} />
 
-            {/* Two-column layout */}
-            <div className="flex gap-6">
-              {/* Scores Table */}
-              <div className={`${selectedEntry ? 'w-1/2' : 'w-full'} transition-all`}>
-                <ScoresTable
-                  scores={scores}
-                  onSelect={handleSelect}
-                  selectedAsin={selectedEntry?.asin || null}
-                />
-              </div>
+            {/* Scores Table - Full Width */}
+            <div>
+              <ScoresTable
+                scores={scores}
+                onSelect={handleSelect}
+                selectedAsin={selectedEntry?.asin || null}
+              />
+            </div>
 
-              {/* Detail Panel */}
-              {selectedEntry && (
-                <div className="w-1/2 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-200">
-                      Detail: {selectedEntry.asin}
-                    </h2>
-                    <button
-                      onClick={handleCloseDetail}
-                      className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-                    >
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+            {/* Detail View - Below Table */}
+            {selectedEntry && (
+              <div id="detail-section" className="space-y-4 pt-4 border-t-4 border-blue-500">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
+                    Detailed Analysis: {selectedEntry.asin}
+                  </h2>
+                  <button
+                    onClick={handleCloseDetail}
+                    className="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Close
+                  </button>
+                </div>
+
+                {/* Two column layout for detail */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Left column */}
+                  <div className="space-y-4">
+                    <ScoreCard result={selectedEntry.lqs} />
+                    <RadarChart result={selectedEntry.lqs} />
                   </div>
 
-                  <ScoreCard result={selectedEntry.lqs} />
-                  <RadarChart result={selectedEntry.lqs} />
-                  <Recommendations recommendations={selectedEntry.lqs.recommendations} />
-                  <DimensionBreakdown result={selectedEntry.lqs} />
+                  {/* Right column */}
+                  <div className="space-y-4">
+                    <Recommendations recommendations={selectedEntry.lqs.recommendations} />
+                    <DimensionBreakdown result={selectedEntry.lqs} />
+                  </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
 

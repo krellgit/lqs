@@ -20,6 +20,7 @@ export interface S3ReportFile {
 
 /**
  * Extract ASIN from S3 object key/filename
+ * Returns only the ASIN (B followed by 9 alphanumeric chars)
  */
 function extractAsinFromKey(key: string): string {
   const filename = key.split('/').pop() || key;
@@ -27,6 +28,7 @@ function extractAsinFromKey(key: string): string {
   if (asinMatch) {
     return asinMatch[1].toUpperCase();
   }
+  // If no ASIN pattern found, return the full filename for debugging
   return filename.replace(/\.json$/i, '');
 }
 
