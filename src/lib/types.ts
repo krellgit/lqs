@@ -1,4 +1,4 @@
-// Pipeline Output Types (from SLO system)
+// Pipeline Output Types (actual S3 structure)
 export interface PipelineOutput {
   ASIN: string;
   MSKU?: string;
@@ -7,26 +7,44 @@ export interface PipelineOutput {
     bullet_points: string[];
     description?: string;
     search_terms?: string;
-  };
-  listing_creation?: {
-    quality_report: {
-      usps_total: number;
-      usp_coverage: number;
-      keywords_used: number;
-      quality_score: number;
-      compliance_score: number;
-      keyword_coverage: number;
-      usps_represented: number;
-      keywords_required: number;
-      banned_terms_found: number;
+    backend_search_terms?: string;
+    metadata?: {
+      quality_score?: number;
+      status?: string;
     };
   };
+  // Actual S3 field names (case-sensitive, with spaces)
+  'Competitors Final List'?: Competitor[];
+  'Competitors Trimmed List'?: Competitor[];
+  Keywords?: {
+    enriched?: Keyword[];
+    rufus?: any[];
+    competitors?: any[];
+    product_profile?: any[];
+  };
+  USPs?: USP[];
+  intent_themes_processed?: IntentTheme[];
+
+  // Legacy field names for backward compatibility
+  listing_creation?: {
+    quality_report?: {
+      usps_total?: number;
+      usp_coverage?: number;
+      keywords_used?: number;
+      quality_score?: number;
+      compliance_score?: number;
+      keyword_coverage?: number;
+      usps_represented?: number;
+      keywords_required?: number;
+      banned_terms_found?: number;
+    };
+  };
+  competitor_list_final?: Competitor[];
   usp_approved_set?: USP[];
   keyword_package?: {
     primary?: Keyword[];
     secondary?: Keyword[];
     long_tail?: Keyword[];
-    // Alternative nested structure
     keyword_sets?: {
       primary?: Keyword[];
       secondary?: Keyword[];
@@ -34,28 +52,53 @@ export interface PipelineOutput {
       excluded?: Keyword[];
     };
   };
-  intent_themes_processed?: IntentTheme[];
-  competitor_list_final?: Competitor[];
 }
 
 export interface USP {
+  // Actual S3 structure
+  point?: string;
+  usp_text?: string;
+  usp_id?: string;
+  approved?: number; // 1=approved, 0=not
+  total_usp_score?: number;
+  pains?: string[];
+  desires?: string[];
+  themes?: string[];
+
+  // Legacy fields
   id?: string;
-  text: string;
+  text?: string;
   category?: string;
   score?: number;
 }
 
 export interface Keyword {
-  keyword?: string;
-  keyword_text?: string;
+  // Actual S3 structure
   keyword_canonical?: string;
-  score?: number;
+  keyword_text?: string;
+  priority_tier?: string; // "Primary", "Secondary", "Long-tail", "Excluded"
   keyword_strength_score?: number;
+  tier_notes?: string;
+  demand_tier?: string;
+
+  // Legacy fields
+  keyword?: string;
+  score?: number;
   tier?: string;
 }
 
 export interface IntentTheme {
-  theme: string;
+  // Actual S3 structure
+  name?: string;
+  pains?: string[]; // NOT pain_points
+  desires?: string[];
+  features?: string[];
+  questions?: string[];
+  frequency_score?: number;
+  importance_score?: number;
+
+  // Legacy fields
+  theme?: string;
   keywords?: string[];
   pain_points?: string[];
   frequency?: number;
@@ -64,7 +107,12 @@ export interface IntentTheme {
 export interface Competitor {
   asin?: string;
   title?: string;
-  bullets?: string[];
+  bullet_points?: string[]; // Actual S3 field name
+  bullets?: string[]; // Legacy
+  brand?: string;
+  price?: number;
+  rating?: number;
+  relevance_score?: number;
 }
 
 // LQS Result Types

@@ -5,6 +5,9 @@ import {
   LQSResult,
   DimensionResult,
   Grade,
+  Competitor,
+  USP,
+  IntentTheme,
   DIMENSION_WEIGHTS,
   GRADE_THRESHOLDS,
 } from './types';
@@ -71,24 +74,59 @@ function getKeywordText(kw: { keyword?: string; keyword_text?: string; keyword_c
   return kw.keyword || kw.keyword_text || kw.keyword_canonical || '';
 }
 
-// Helper to get keywords from package (handles both flat and nested structures)
+// Helper to get keywords by tier from actual S3 structure
 function getKeywords(data: PipelineOutput, tier: 'primary' | 'secondary' | 'long_tail'): string[] {
+  // Try Keywords.enriched (actual S3 structure)
+  const enriched = data.Keywords?.enriched;
+  if (enriched && enriched.length > 0) {
+    const tierMap: Record<string, string> = {
+      'primary': 'Primary',
+      'secondary': 'Secondary',
+      'long_tail': 'Long-tail',
+    };
+
+    const targetTier = tierMap[tier];
+    return enriched
+      .filter(k => k.priority_tier === targetTier)
+      .map(k => getKeywordText(k).toLowerCase())
+      .filter(k => k.length > 0);
+  }
+
+  // Fallback to legacy keyword_package structure
   const pkg = data.keyword_package;
   if (!pkg) return [];
 
-  // Try flat structure first
   const flatKeywords = pkg[tier];
   if (flatKeywords && flatKeywords.length > 0) {
     return flatKeywords.map(k => getKeywordText(k).toLowerCase()).filter(k => k.length > 0);
   }
 
-  // Try nested structure
   const nestedKeywords = pkg.keyword_sets?.[tier];
   if (nestedKeywords && nestedKeywords.length > 0) {
     return nestedKeywords.map(k => getKeywordText(k).toLowerCase()).filter(k => k.length > 0);
   }
 
   return [];
+}
+
+// Helper to get competitors (handles actual S3 field names)
+function getCompetitors(data: PipelineOutput): Competitor[] {
+  return data['Competitors Final List'] || data.competitor_list_final || [];
+}
+
+// Helper to get approved USPs (handles actual S3 structure)
+function getApprovedUSPs(data: PipelineOutput): USP[] {
+  // Try actual S3 structure
+  if (data.USPs) {
+    return data.USPs.filter(u => u.approved === 1);
+  }
+  // Fallback to legacy
+  return data.usp_approved_set || [];
+}
+
+// Helper to get USP text
+function getUSPText(usp: USP): string {
+  return usp.point || usp.usp_text || usp.text || '';
 }
 
 // 1. Keyword Optimization (25%)
@@ -177,8 +215,17 @@ function calculateUSPEffectiveness(data: PipelineOutput): DimensionResult {
   const flags: string[] = [];
   const weight = DIMENSION_WEIGHTS.usp_effectiveness;
 
-  // Get coverage from existing quality_report
-  const coverage = data.listing_creation?.quality_report?.usp_coverage ?? 70;
+  const approvedUSPs = getApprovedUSPs(data);
+  const totalUSPs = approvedUSPs.length;
+
+  // Calculate coverage (how many USPs are mentioned in content)
+  const content = [data.Content?.title || '', ...(data.Content?.bullet_points || [])].join(' ').toLowerCase();
+  const uspsInContent = approvedUSPs.filter(usp => {
+    const uspText = getUSPText(usp).toLowerCase();
+    return uspText && content.includes(uspText.substring(0, 30)); // Match first 30 chars
+  }).length;
+
+  const coverage = totalUSPs > 0 ? (uspsInContent / totalUSPs) * 100 : 70;
 
   // Calculate differentiation
   const differentiation = calculateDifferentiation(data);
@@ -206,11 +253,11 @@ function calculateUSPEffectiveness(data: PipelineOutput): DimensionResult {
 
 function calculateDifferentiation(data: PipelineOutput): number {
   const bullets = data.Content?.bullet_points || [];
-  const competitors = data.competitor_list_final ?? [];
+  const competitors = getCompetitors(data);
 
   if (competitors.length === 0) return 75; // Default if no competitor data
 
-  const competitorBullets = competitors.flatMap(c => c.bullets ?? []);
+  const competitorBullets = competitors.flatMap(c => c.bullet_points || c.bullets || []);
   if (competitorBullets.length === 0) return 75;
 
   let totalDiff = 0;
@@ -386,7 +433,7 @@ function calculateCompetitivePosition(data: PipelineOutput): DimensionResult {
   const flags: string[] = [];
   const weight = DIMENSION_WEIGHTS.competitive_position;
 
-  const competitors = data.competitor_list_final ?? [];
+  const competitors = getCompetitors(data);
 
   // If no competitor data, return default
   if (competitors.length === 0) {
@@ -425,7 +472,7 @@ function calculateCompetitivePosition(data: PipelineOutput): DimensionResult {
 
 function calculateKeywordDifferentiation(
   data: PipelineOutput,
-  competitors: NonNullable<PipelineOutput['competitor_list_final']>
+  competitors: Competitor[]
 ): number {
   const ourKeywords = [
     ...getKeywords(data, 'primary'),
@@ -435,7 +482,7 @@ function calculateKeywordDifferentiation(
   if (ourKeywords.length === 0) return 70;
 
   const competitorText = competitors
-    .map(c => [c.title ?? '', ...(c.bullets ?? [])].join(' ').toLowerCase())
+    .map(c => [c.title ?? '', ...(c.bullet_points || c.bullets || [])].join(' ').toLowerCase())
     .join(' ');
 
   let diffScore = 0;
@@ -454,10 +501,10 @@ function calculateKeywordDifferentiation(
 
 function calculateValuePropUniqueness(
   data: PipelineOutput,
-  competitors: NonNullable<PipelineOutput['competitor_list_final']>
+  competitors: Competitor[]
 ): number {
   const ourBullets = data.Content?.bullet_points || [];
-  const competitorBullets = competitors.flatMap(c => c.bullets ?? []);
+  const competitorBullets = competitors.flatMap(c => c.bullet_points || c.bullets || []);
 
   if (competitorBullets.length === 0) return 75;
 
@@ -531,23 +578,35 @@ function calculateThemeCoverage(
 
   let covered = 0;
   themes.forEach(theme => {
-    if (!theme || !theme.theme) return;
+    // Handle actual S3 structure (theme.name) and legacy (theme.theme)
+    const themeName = theme.name || theme.theme;
+    if (!themeName) return;
 
-    const themeWords = theme.theme.toLowerCase().split(/\s+/);
-    const keywordMatches = theme.keywords?.some(kw => kw && content.includes(kw.toLowerCase()));
+    const themeWords = themeName.toLowerCase().split(/\s+/);
+
+    // Check features, pains, desires for keyword matches
+    const allKeywords = [
+      ...(theme.features || []),
+      ...(theme.pains || []),
+      ...(theme.desires || []),
+      ...(theme.keywords || []),
+    ];
+
+    const keywordMatches = allKeywords.some(kw => kw && content.includes(kw.toLowerCase()));
     const themeMatch = themeWords.some(tw => tw.length > 3 && content.includes(tw));
 
     if (keywordMatches || themeMatch) covered++;
   });
 
-  return (covered / themes.length) * 100;
+  return themes.length > 0 ? (covered / themes.length) * 100 : 70;
 }
 
 function calculatePainPointAddressing(
   data: PipelineOutput,
   themes: NonNullable<PipelineOutput['intent_themes_processed']>
 ): number {
-  const painPoints = themes.flatMap(t => t.pain_points ?? []);
+  // Actual S3 structure uses 'pains' and 'desires', not 'pain_points'
+  const painPoints = themes.flatMap(t => [...(t.pains || []), ...(t.pain_points || [])]);
   if (painPoints.length === 0) return 75;
 
   const bullets = (data.Content?.bullet_points || []).map(b => b.toLowerCase());
