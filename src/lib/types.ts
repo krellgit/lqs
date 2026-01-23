@@ -90,9 +90,9 @@ export interface Keyword {
 export interface IntentTheme {
   // Actual S3 structure
   name?: string;
-  pains?: string[]; // NOT pain_points
+  pains?: string[];
   desires?: string[];
-  features?: string[];
+  features?: Array<string | { feature: string; interest_score?: number }>; // Can be strings or objects
   questions?: string[];
   frequency_score?: number;
   importance_score?: number;

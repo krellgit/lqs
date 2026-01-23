@@ -585,14 +585,18 @@ function calculateThemeCoverage(
     const themeWords = themeName.toLowerCase().split(/\s+/);
 
     // Check features, pains, desires for keyword matches
+    // Features might be objects with 'feature' key, or strings
+    const features = (theme.features || []).map((f: any) =>
+      typeof f === 'string' ? f : (typeof f === 'object' && f !== null && f.feature) ? f.feature : ''
+    );
     const allKeywords = [
-      ...(theme.features || []),
+      ...features,
       ...(theme.pains || []),
       ...(theme.desires || []),
       ...(theme.keywords || []),
     ];
 
-    const keywordMatches = allKeywords.some(kw => kw && content.includes(kw.toLowerCase()));
+    const keywordMatches = allKeywords.some(kw => kw && typeof kw === 'string' && content.includes(kw.toLowerCase()));
     const themeMatch = themeWords.some(tw => tw.length > 3 && content.includes(tw));
 
     if (keywordMatches || themeMatch) covered++;
