@@ -917,26 +917,60 @@ function calculatePainPointAddressing(
   const bullets = (data.Content?.bullet_points || []).map(b => b.toLowerCase());
   const description = data.Content?.description?.toLowerCase() || '';
 
+  // Common pain point synonyms for better matching
+  const synonyms: Record<string, string[]> = {
+    'pain': ['discomfort', 'ache', 'aching', 'soreness', 'hurt', 'painful'],
+    'energy': ['stamina', 'vitality', 'fatigue', 'tired', 'tiredness'],
+    'budget': ['affordable', 'price', 'cost', 'expensive', 'cheap'],
+    'fit': ['sizing', 'size', 'fitting'],
+  };
+
   let addressed = 0;
   allPainPoints.forEach(pp => {
     if (!pp || typeof pp !== 'string') return;
 
     const ppLower = pp.toLowerCase();
-    const ppWords = ppLower.split(/\s+/).filter(w => w.length > 3);
+    const ppWords = ppLower.split(/\s+/).filter(w => w.length > 2);  // FIXED: keep 3+ char words
 
     // Check if any bullet or description addresses this pain point
     const isAddressed = [...bullets, description].some(section => {
       // Direct mention (exact phrase)
       if (section.includes(ppLower)) return true;
 
-      // Word overlap (require 50%+ of words, minimum 2 words)
+      // Word overlap with word boundary matching (handles plurals)
       if (ppWords.length >= 2) {
-        const matchingWords = ppWords.filter(w => section.includes(w));
-        return matchingWords.length >= Math.max(2, Math.ceil(ppWords.length * 0.5));
+        const matchingWords = ppWords.filter(w => {
+          // Use word boundary regex to match "hip" in "hips", "knee" in "knees"
+          const wordRegex = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+          if (wordRegex.test(section)) return true;
+
+          // Check synonyms
+          const syns = synonyms[w] || [];
+          return syns.some(syn => {
+            const synRegex = new RegExp(`\\b${syn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+            return synRegex.test(section);
+          });
+        });
+
+        // Require 50%+ word match (no minimum word count requirement)
+        return matchingWords.length >= Math.ceil(ppWords.length * 0.5);
       }
 
-      // Single-word pain points (rare) - require exact match
-      return ppWords.length === 1 && section.includes(ppWords[0]);
+      // Single-word pain points - check with word boundary and synonyms
+      if (ppWords.length === 1) {
+        const word = ppWords[0];
+        const wordRegex = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+        if (wordRegex.test(section)) return true;
+
+        // Check synonyms
+        const syns = synonyms[word] || [];
+        return syns.some(syn => {
+          const synRegex = new RegExp(`\\b${syn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+          return synRegex.test(section);
+        });
+      }
+
+      return false;
     });
 
     if (isAddressed) addressed++;
