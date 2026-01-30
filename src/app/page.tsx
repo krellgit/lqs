@@ -31,6 +31,7 @@ interface ScoresResponse {
   errors?: Array<{ asin: string; error: string }>;
   meta?: {
     totalFiles: number;
+    uniqueAsins?: number;
     processedFiles: number;
     failedFiles: number;
     timestamp: string;

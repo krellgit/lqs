@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { listS3Reports, fetchS3Report, hasS3Config } from '@/lib/s3';
 import { calculateLQS } from '@/lib/lqs-calculator';
 import { PipelineOutput, LQSResult } from '@/lib/types';
+import { getLatestVersions, detectVersions } from '@/lib/versionDetection';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -50,9 +51,9 @@ export async function GET(): Promise<NextResponse<ScoresResponse>> {
     }
 
     // List all JSON files in S3
-    const reportFiles = await listS3Reports();
+    const allReportFiles = await listS3Reports();
 
-    if (reportFiles.length === 0) {
+    if (allReportFiles.length === 0) {
       return NextResponse.json({
         configured: true,
         scores: [],
@@ -68,11 +69,17 @@ export async function GET(): Promise<NextResponse<ScoresResponse>> {
       });
     }
 
-    // Fetch and calculate LQS for each report
+    // Detect versions and get only the latest version of each ASIN
+    const versionedMap = detectVersions(allReportFiles);
+    const latestVersionFiles = getLatestVersions(allReportFiles);
+
+    console.log(`[LQS API] Total files: ${allReportFiles.length}, Unique ASINs: ${versionedMap.size}, Latest versions: ${latestVersionFiles.length}`);
+
+    // Fetch and calculate LQS for each latest version
     const scores: LQSScoreEntry[] = [];
     const errors: Array<{ asin: string; error: string }> = [];
 
-    for (const file of reportFiles) {
+    for (const file of latestVersionFiles) {
       try {
         const rawContent = await fetchS3Report(file.key);
         const pipelineOutput = rawContent as PipelineOutput;
@@ -120,7 +127,8 @@ export async function GET(): Promise<NextResponse<ScoresResponse>> {
       scores,
       errors: errors.length > 0 ? errors : undefined,
       meta: {
-        totalFiles: reportFiles.length,
+        totalFiles: allReportFiles.length,
+        uniqueAsins: versionedMap.size,
         processedFiles: scores.length,
         failedFiles: errors.length,
         timestamp: new Date().toISOString(),
