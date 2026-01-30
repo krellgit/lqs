@@ -2,61 +2,129 @@
 
 ## LQS-003 - 2026-01-30T21:00:00Z
 
-**Summary:** Production review + identified pain point issue
+**Summary:** Complete LQS overhaul + production review
 
-**Goal:** Review production scores, validate fixes, identify remaining issues
+**Goal:** Fix all LQS calculator logic issues, add content display UI, add sub-component visibility, and review production scores
 
-**Status:** In Progress
+**Status:** Complete (with open questions for investigation)
 
 **Changes:**
-1. Reviewed 25+ production ASINs with all fixes applied
-2. Validated keyword optimization fixes working (75.9 avg, was ~54)
-3. Identified critical issue: Pain Point Addressing averaging 17.1/100
-4. Attempted version detection fix (129 → expected 71 unique ASINs)
-5. Created comprehensive score review document
+1. Fixed 5 major scoring issues in LQS calculator (keyword coverage, tier alignment, USP effectiveness, pain point data, title placement)
+2. Implemented 3-tier progressive disclosure UI for content display
+3. Added sub-component visibility (status dots, aggregate stats)
+4. Implemented version detection for S3 files
+5. Reviewed 25+ production ASINs and identified remaining issues
+6. Deployed 10 commits across the session
 
 **Files modified:**
-1. LQS_SCORE_REVIEW.md (NEW - production analysis)
+1. src/lib/lqs-calculator.ts (complete rewrite - 500+ lines added)
+2. src/lib/types.ts (added placement_plan fields)
+3. src/lib/stats-aggregation.ts (NEW - utility functions)
+4. src/lib/versionDetection.ts (NEW - ASIN version grouping)
+5. src/app/api/scores/route.ts (content data, version detection)
+6. src/app/page.tsx (tabs, expansion state)
+7. src/components/ScoresTable.tsx (expandable rows, status dots)
+8. src/components/StatsOverview.tsx (aggregate display)
+9. src/components/ExpandedContent.tsx (NEW - inline preview)
+10. src/components/ContentTab.tsx (NEW - full content display)
+11. LQS_CALCULATOR_CHANGES.md (NEW - technical docs)
+12. LQS_CALCULATOR_FIX_PROPOSAL.md (NEW - analysis)
+13. LQS_SCORE_REVIEW.md (NEW - production findings)
+14. CONTENT_DISPLAY_IMPLEMENTATION.md (NEW - UI specs)
 
 **Commits:**
-1. 9c14109 - Fix ASIN count: implement version detection
+1. 610e814 - Fix LQS calculator: use intended keywords and concept matching
+2. 9f1e585 - Add content display to LQS dashboard - API enhancement
+3. a9f9a1d - Complete content display feature for LQS dashboard
+4. 0b524db - Add sub-component breakdowns to table and stats overview
+5. 2b71801 - Fix keyword matching: use word-level partial credit
+6. 67758a0 - Add checkpoint LQS-002
+7. 71edd2f - Fix tier alignment: use same keywords + smart matching
+8. 7b95be9 - Fix pain point addressing: include USP pain points
+9. 9c14109 - Fix ASIN count: implement version detection
+10. eda9480 - Add checkpoint LQS-003
 
-**Key findings:**
+**Key decisions:**
 
-1. **Keyword Optimization fixes validated (75.9 avg)**
-   - Coverage: 80-90% (was 17-34%) ✅
-   - Tier Alignment: 90-98% (was 34%) ✅
-   - Smart word-level matching working correctly
-   - Strength-weighted coverage accurately reflects keyword usage
+1. **Use intended keywords (20-40) not all analyzed keywords (162)**
+   - User validated: Pipeline applies keywords properly, just selectively
+   - Test showed: All 162 keywords present as words, but only 24-40 as phrases
+   - Impact: Keyword coverage 17% → 82% (accurately reflects integration)
 
-2. **Customer Alignment critical issue (30.7 avg)**
-   - Intent Theme Coverage: 44.1/100 (fair)
-   - Pain Point Addressing: 17.1/100 (critical!)
-   - 60% of ASINs scoring below 30%
-   - Root cause unknown: Data missing vs matching failing vs content quality
+2. **Implement word-level partial credit for keyword matching**
+   - User insight: "Intended keywords ARE applied properly"
+   - Issue: Multi-word keywords split naturally ("knee pain" → "knee" and "pain" separately)
+   - Solution: Exact phrase 100%, all words 90%, 75% words 70%, 50% words 50%
+   - Impact: Tier alignment 34% → 98%, Coverage 34% → 82%
 
-3. **Version detection showing unexpected results**
-   - Logs show: "Total files: 129, Unique ASINs: 129, Latest versions: 129"
-   - Expected: ~71 unique ASINs with multiple versions each
-   - Actual: All 129 files have different ASINs (no duplicates detected)
-   - Possible causes: Versioning not used consistently, ASIN extraction issue, or user expectation incorrect
+3. **Use concept matching for USPs (not exact phrases)**
+   - USP "point" field is strategic guidance, not copy text
+   - Extract meaningful words, check phrase matches
+   - Sliding threshold: 50-100% based on USP length
+   - Impact: USP coverage 0% → 40%
 
-4. **Overall performance**
-   - Average LQS: 66.2/100 (Grade D)
-   - No A or B grades (highest is C range 70-79)
+4. **Pull pain points from USPs (not just intent themes)**
+   - Intent themes had only 2 pain points
+   - Approved USPs have 16 pain points (richer data)
+   - Combined and deduplicated for comprehensive measurement
+   - Impact: More meaningful metric (measuring all pain points)
+
+5. **3-tier progressive disclosure for content (Opus recommendation)**
+   - Tier 1: Compact table with title preview + indicators
+   - Tier 2: Expandable inline preview
+   - Tier 3: Detail panel Content tab
+   - Alternative rejected: Show all content (destroys scannability)
+
+6. **Status dots (●/○) for sub-component visibility**
+   - Green dot (●) = sub-score >= 70
+   - Red dot (○) = sub-score < 70
+   - Adds only ~8px row height
+   - Enables pattern scanning across 60+ rows
+   - Alternative: Hover tooltips only (doesn't enable cross-row comparison)
+
+7. **Parallel agent approach (ralph-loop + swarm)**
+   - Spawned 3 Opus/Haiku agents for comprehensive design
+   - Agent 1: Row breakdown design (status dots recommendation)
+   - Agent 2: Stats overview design (expandable problem areas)
+   - Agent 3: Utility functions (clean implementation)
+   - Synthesized into hybrid approach
+
+**Production findings:**
+
+1. **Keyword Optimization validated: 75.9 avg (excellent!)**
+   - Coverage: 80-90% across ASINs ✅
+   - Tier Alignment: 90-98% across ASINs ✅
+   - Fixes working as intended
+
+2. **Customer Alignment critical issue: 30.7 avg**
+   - Intent Theme Coverage: 44.1 (fair)
+   - Pain Point Addressing: 17.1 (critical!)
+   - 60% of ASINs below 30%
+   - Needs investigation: Data missing vs matching failing
+
+3. **Version detection showing 129 unique ASINs**
+   - User expected ~71 unique with versions
+   - Logs show: All 129 have different ASINs (no duplicates)
+   - Needs verification: Are these all unique or is grouping failing?
+
+4. **Overall performance: 66.2 avg LQS (Grade D)**
+   - No A or B grades
    - MYE Eligible: 37/129 (29%)
-   - Primary limiters: Customer Alignment (30.7), USP Effectiveness (62.3), Readability (67.3)
+   - Test ASIN improved: 68 → 78 (+10 points with all fixes)
 
 **Blockers:**
-1. Need to investigate why pain point scores are so low (17.1 avg)
-2. Need to verify version detection logic or user's expectation of 71 ASINs
+1. Need to verify pain point data in source files (why is avg 17.1%?)
+2. Need to verify ASIN count expectation (129 vs 71)
 
 **Next steps:**
-1. Check source files for ASINs with 0% pain score - do they have USPs.pains data?
-2. Debug version detection - verify S3 filenames and grouping logic
-3. If pain point data exists but isn't matching, improve matching logic
-4. If version detection is working correctly, update user expectation
-5. Consider lowering pain point matching threshold if data exists but isn't matching
+1. Check S3 source files for ASINs with 0% pain scores - verify USPs.pains data exists
+2. Verify S3 filenames - do they actually have version patterns (ASIN_YYYY-MM-DD.json)?
+3. If pain data exists but not matching, improve matching threshold or logic
+4. If 129 is correct count, update user expectation
+5. Consider adding hover tooltips for sub-component details in table rows
+6. Monitor dimension averages after calculator fixes settle
+
+---
 
 ---
 
