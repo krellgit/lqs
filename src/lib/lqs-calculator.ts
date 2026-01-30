@@ -411,50 +411,65 @@ function calculateTierAlignment(data: PipelineOutput): number {
   const bullets = (data.Content?.bullet_points || []).map(b => b.toLowerCase());
   const description = data.Content?.description?.toLowerCase() ?? '';
 
+  // Use the SAME intended keywords as coverage (not a different selection!)
+  const intendedKeywords = getIntendedKeywords(data);
+  if (intendedKeywords.length === 0) return 80;
+
+  // Separate into tiers for placement scoring
   const enriched = data.Keywords?.enriched || [];
-  if (enriched.length === 0) return 80;
+  const primary = enriched.filter(k => k.priority_tier === 'Primary');
+  const allSecondary = enriched.filter(k => k.priority_tier === 'Secondary');
 
-  // Get intended keywords by tier
-  const intendedPrimary = enriched.filter(k =>
-    k.priority_tier === 'Primary' &&
-    (k.keyword_strength_score || 0) >= 60
-  );
-
-  const intendedSecondary = enriched.filter(k =>
-    k.priority_tier === 'Secondary' &&
-    (k.keyword_strength_score || 0) >= 70
-  );
+  // Identify pseudo-Primary (if no real Primary exists)
+  let pseudoPrimaryCount = 0;
+  if (primary.length === 0 && allSecondary.length > 0) {
+    pseudoPrimaryCount = Math.ceil(allSecondary.length * 0.3);
+  }
 
   let score = 0;
   let maxScore = 0;
 
-  // Primary keywords should be in title or top bullets
-  intendedPrimary.forEach(kw => {
+  intendedKeywords.forEach((kw, index) => {
     const kwText = getKeywordText(kw).toLowerCase();
     if (!kwText) return;
 
-    maxScore += 1;
-    if (title.includes(kwText)) {
-      score += 1;
-    } else if (bullets.slice(0, 2).some(b => b.includes(kwText))) {
-      score += 0.75;
-    } else if (bullets.some(b => b.includes(kwText))) {
-      score += 0.5;
-    } else if (description.includes(kwText)) {
-      score += 0.25;
-    }
-  });
+    // Determine if this is high-priority (Primary or pseudo-Primary)
+    const isHighPriority = kw.priority_tier === 'Primary' ||
+      (primary.length === 0 && kw.priority_tier === 'Secondary' && index < pseudoPrimaryCount);
 
-  // Secondary keywords should be in bullets
-  intendedSecondary.forEach(kw => {
-    const kwText = getKeywordText(kw).toLowerCase();
-    if (!kwText) return;
+    // Helper: Check if keyword appears in section (word-level matching)
+    const appearsByWords = (section: string) => {
+      const kwWords = kwText.split(/\s+/).filter(w => w.length > 3);
+      if (kwWords.length === 0) return section.includes(kwText); // Fallback to exact
+
+      const matchedWords = kwWords.filter(w => section.includes(w));
+      return matchedWords.length / kwWords.length >= 0.5; // 50%+ words present
+    };
 
     maxScore += 1;
-    if (bullets.some(b => b.includes(kwText))) {
-      score += 1;
-    } else if (description.includes(kwText)) {
-      score += 0.75;
+
+    if (isHighPriority) {
+      // High-priority keywords: should be in title or top bullets
+      if (appearsByWords(title)) {
+        score += 1.0; // Perfect placement
+      } else if (bullets.slice(0, 2).some(b => appearsByWords(b))) {
+        score += 0.75; // Good placement
+      } else if (bullets.some(b => appearsByWords(b))) {
+        score += 0.5; // Acceptable placement
+      } else if (appearsByWords(description)) {
+        score += 0.25; // Poor placement
+      }
+      // else: 0 points (missing)
+    } else {
+      // Regular Secondary/Long-tail keywords: should be in bullets or description
+      if (bullets.some(b => appearsByWords(b))) {
+        score += 1.0; // Perfect placement
+      } else if (appearsByWords(description)) {
+        score += 0.75; // Good placement
+      } else if (appearsByWords(title)) {
+        score += 0.5; // Not ideal (wasting title space) but present
+      }
+      // else: 0 points (missing)
     }
   });
 
