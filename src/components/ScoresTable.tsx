@@ -40,6 +40,25 @@ function getScoreColor(score: number): string {
   return 'text-red-600 dark:text-red-400';
 }
 
+// Component to show sub-score status dots
+function SubScoreDots({ breakdown }: { breakdown: Record<string, number> }) {
+  const values = Object.values(breakdown);
+  return (
+    <div className="flex items-center justify-center gap-0.5 mt-0.5">
+      {values.map((score, idx) => (
+        <div
+          key={idx}
+          className={`w-1.5 h-1.5 rounded-full ${
+            score >= 70 ? 'bg-green-500 dark:bg-green-400' : 'bg-red-400 dark:bg-red-500'
+          }`}
+          style={{ opacity: score >= 70 ? 0.8 : 0.6 }}
+          title={`${score}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function ScoresTable({ scores, onSelect, selectedAsin, expandedRows, onToggleExpand }: ScoresTableProps) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
@@ -164,49 +183,67 @@ export default function ScoresTable({ scores, onSelect, selectedAsin, expandedRo
                     onClick={() => onSelect(entry)}
                     className="px-4 py-3 text-center"
                   >
-                    <span className={`text-sm font-medium ${getScoreColor(dims.keyword_optimization.score)}`}>
-                      {dims.keyword_optimization.score}
-                    </span>
+                    <div>
+                      <span className={`text-sm font-medium ${getScoreColor(dims.keyword_optimization.score)}`}>
+                        {dims.keyword_optimization.score}
+                      </span>
+                      <SubScoreDots breakdown={dims.keyword_optimization.breakdown} />
+                    </div>
                   </td>
                   <td
                     onClick={() => onSelect(entry)}
                     className="px-4 py-3 text-center"
                   >
-                    <span className={`text-sm font-medium ${getScoreColor(dims.usp_effectiveness.score)}`}>
-                      {dims.usp_effectiveness.score}
-                    </span>
+                    <div>
+                      <span className={`text-sm font-medium ${getScoreColor(dims.usp_effectiveness.score)}`}>
+                        {dims.usp_effectiveness.score}
+                      </span>
+                      <SubScoreDots breakdown={dims.usp_effectiveness.breakdown} />
+                    </div>
                   </td>
                   <td
                     onClick={() => onSelect(entry)}
                     className="px-4 py-3 text-center"
                   >
-                    <span className={`text-sm font-medium ${getScoreColor(dims.readability.score)}`}>
-                      {dims.readability.score}
-                    </span>
+                    <div>
+                      <span className={`text-sm font-medium ${getScoreColor(dims.readability.score)}`}>
+                        {dims.readability.score}
+                      </span>
+                      <SubScoreDots breakdown={dims.readability.breakdown} />
+                    </div>
                   </td>
                   <td
                     onClick={() => onSelect(entry)}
                     className="px-4 py-3 text-center"
                   >
-                    <span className={`text-sm font-medium ${getScoreColor(dims.competitive_position.score)}`}>
-                      {dims.competitive_position.score}
-                    </span>
+                    <div>
+                      <span className={`text-sm font-medium ${getScoreColor(dims.competitive_position.score)}`}>
+                        {dims.competitive_position.score}
+                      </span>
+                      <SubScoreDots breakdown={dims.competitive_position.breakdown} />
+                    </div>
                   </td>
                   <td
                     onClick={() => onSelect(entry)}
                     className="px-4 py-3 text-center"
                   >
-                    <span className={`text-sm font-medium ${getScoreColor(dims.customer_alignment.score)}`}>
-                      {dims.customer_alignment.score}
-                    </span>
+                    <div>
+                      <span className={`text-sm font-medium ${getScoreColor(dims.customer_alignment.score)}`}>
+                        {dims.customer_alignment.score}
+                      </span>
+                      <SubScoreDots breakdown={dims.customer_alignment.breakdown} />
+                    </div>
                   </td>
                   <td
                     onClick={() => onSelect(entry)}
                     className="px-4 py-3 text-center"
                   >
-                    <span className={`text-sm font-medium ${getScoreColor(dims.compliance.score)}`}>
-                      {dims.compliance.score}
-                    </span>
+                    <div>
+                      <span className={`text-sm font-medium ${getScoreColor(dims.compliance.score)}`}>
+                        {dims.compliance.score}
+                      </span>
+                      <SubScoreDots breakdown={dims.compliance.breakdown} />
+                    </div>
                   </td>
                   <td
                     onClick={() => onSelect(entry)}
