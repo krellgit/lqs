@@ -13,6 +13,12 @@ export interface LQSScoreEntry {
   lqs: LQSResult;
   lastModified: string;
   fileName: string;
+  content: {
+    title: string;
+    bullet_points: string[];
+    description?: string;
+    backend_keywords?: string[];
+  };
 }
 
 export interface ScoresResponse {
@@ -89,6 +95,14 @@ export async function GET(): Promise<NextResponse<ScoresResponse>> {
           lqs: lqsResult,
           lastModified: file.lastModified.toISOString(),
           fileName: file.name,
+          content: {
+            title: pipelineOutput.Content?.title || '',
+            bullet_points: pipelineOutput.Content?.bullet_points || [],
+            description: pipelineOutput.Content?.description,
+            backend_keywords: pipelineOutput.Content?.backend_search_terms?.split(',').map(k => k.trim()) ||
+                              pipelineOutput.Content?.search_terms?.split(',').map(k => k.trim()) ||
+                              [],
+          },
         });
       } catch (error) {
         errors.push({
