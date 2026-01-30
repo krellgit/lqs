@@ -293,7 +293,7 @@ function calculateKeywordOptimization(data: PipelineOutput): DimensionResult {
     data.Content?.description ?? ''
   ].join(' ').toLowerCase();
 
-  // Calculate strength-weighted coverage
+  // Calculate strength-weighted coverage with smart matching
   // Using high-value keywords scores better than using low-value ones
   let totalStrength = 0;
   let usedStrength = 0;
@@ -304,9 +304,37 @@ function calculateKeywordOptimization(data: PipelineOutput): DimensionResult {
     const strength = kw.keyword_strength_score || 50;
     totalStrength += strength;
 
-    if (kwText && content.includes(kwText)) {
+    if (!kwText) return;
+
+    // Check for exact phrase match (100% credit)
+    const exactMatch = content.includes(kwText);
+
+    if (exactMatch) {
       usedCount++;
       usedStrength += strength;
+    } else {
+      // Check for word-level match (partial credit)
+      const kwWords = kwText.split(/\s+/).filter(w => w.length > 3);
+
+      if (kwWords.length > 0) {
+        const matchedWords = kwWords.filter(w => content.includes(w));
+        const matchRate = matchedWords.length / kwWords.length;
+
+        // Give partial credit based on word match rate
+        // 100% of words → 0.9 credit
+        // 75% of words → 0.7 credit
+        // 50% of words → 0.5 credit
+        // <50% of words → 0 credit
+        let credit = 0;
+        if (matchRate >= 1.0) credit = 0.9;
+        else if (matchRate >= 0.75) credit = 0.7;
+        else if (matchRate >= 0.5) credit = 0.5;
+
+        if (credit > 0) {
+          usedCount += credit;
+          usedStrength += strength * credit;
+        }
+      }
     }
   });
 
