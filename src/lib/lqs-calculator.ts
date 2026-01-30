@@ -902,32 +902,47 @@ function calculatePainPointAddressing(
   data: PipelineOutput,
   themes: NonNullable<PipelineOutput['intent_themes_processed']>
 ): number {
-  // Actual S3 structure uses 'pains' and 'desires', not 'pain_points'
-  const painPoints = themes.flatMap(t => [...(t.pains || []), ...(t.pain_points || [])]);
-  if (painPoints.length === 0) return 75;
+  // Collect pain points from BOTH intent themes AND approved USPs
+  const themePainPoints = themes.flatMap(t => [...(t.pains || []), ...(t.pain_points || [])]);
+
+  // Also get pain points from approved USPs (richer data source)
+  const approvedUSPs = getApprovedUSPs(data);
+  const uspPainPoints = approvedUSPs.flatMap(u => u.pains || []);
+
+  // Combine and deduplicate
+  const allPainPoints = [...new Set([...themePainPoints, ...uspPainPoints])];
+
+  if (allPainPoints.length === 0) return 75;
 
   const bullets = (data.Content?.bullet_points || []).map(b => b.toLowerCase());
+  const description = data.Content?.description?.toLowerCase() || '';
 
   let addressed = 0;
-  painPoints.forEach(pp => {
+  allPainPoints.forEach(pp => {
     if (!pp || typeof pp !== 'string') return;
 
     const ppLower = pp.toLowerCase();
     const ppWords = ppLower.split(/\s+/).filter(w => w.length > 3);
 
-    // Check if any bullet addresses this pain point
-    const isAddressed = bullets.some(bullet => {
-      // Direct mention
-      if (bullet.includes(ppLower)) return true;
-      // Word overlap
-      const matchingWords = ppWords.filter(w => bullet.includes(w));
-      return matchingWords.length >= 2;
+    // Check if any bullet or description addresses this pain point
+    const isAddressed = [...bullets, description].some(section => {
+      // Direct mention (exact phrase)
+      if (section.includes(ppLower)) return true;
+
+      // Word overlap (require 50%+ of words, minimum 2 words)
+      if (ppWords.length >= 2) {
+        const matchingWords = ppWords.filter(w => section.includes(w));
+        return matchingWords.length >= Math.max(2, Math.ceil(ppWords.length * 0.5));
+      }
+
+      // Single-word pain points (rare) - require exact match
+      return ppWords.length === 1 && section.includes(ppWords[0]);
     });
 
     if (isAddressed) addressed++;
   });
 
-  return (addressed / painPoints.length) * 100;
+  return (addressed / allPainPoints.length) * 100;
 }
 
 // 6. Compliance (10%)
