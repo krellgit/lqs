@@ -1,5 +1,65 @@
 # LQS Calculator Checkpoints
 
+## LQS-003 - 2026-01-30T21:00:00Z
+
+**Summary:** Production review + identified pain point issue
+
+**Goal:** Review production scores, validate fixes, identify remaining issues
+
+**Status:** In Progress
+
+**Changes:**
+1. Reviewed 25+ production ASINs with all fixes applied
+2. Validated keyword optimization fixes working (75.9 avg, was ~54)
+3. Identified critical issue: Pain Point Addressing averaging 17.1/100
+4. Attempted version detection fix (129 → expected 71 unique ASINs)
+5. Created comprehensive score review document
+
+**Files modified:**
+1. LQS_SCORE_REVIEW.md (NEW - production analysis)
+
+**Commits:**
+1. 9c14109 - Fix ASIN count: implement version detection
+
+**Key findings:**
+
+1. **Keyword Optimization fixes validated (75.9 avg)**
+   - Coverage: 80-90% (was 17-34%) ✅
+   - Tier Alignment: 90-98% (was 34%) ✅
+   - Smart word-level matching working correctly
+   - Strength-weighted coverage accurately reflects keyword usage
+
+2. **Customer Alignment critical issue (30.7 avg)**
+   - Intent Theme Coverage: 44.1/100 (fair)
+   - Pain Point Addressing: 17.1/100 (critical!)
+   - 60% of ASINs scoring below 30%
+   - Root cause unknown: Data missing vs matching failing vs content quality
+
+3. **Version detection showing unexpected results**
+   - Logs show: "Total files: 129, Unique ASINs: 129, Latest versions: 129"
+   - Expected: ~71 unique ASINs with multiple versions each
+   - Actual: All 129 files have different ASINs (no duplicates detected)
+   - Possible causes: Versioning not used consistently, ASIN extraction issue, or user expectation incorrect
+
+4. **Overall performance**
+   - Average LQS: 66.2/100 (Grade D)
+   - No A or B grades (highest is C range 70-79)
+   - MYE Eligible: 37/129 (29%)
+   - Primary limiters: Customer Alignment (30.7), USP Effectiveness (62.3), Readability (67.3)
+
+**Blockers:**
+1. Need to investigate why pain point scores are so low (17.1 avg)
+2. Need to verify version detection logic or user's expectation of 71 ASINs
+
+**Next steps:**
+1. Check source files for ASINs with 0% pain score - do they have USPs.pains data?
+2. Debug version detection - verify S3 filenames and grouping logic
+3. If pain point data exists but isn't matching, improve matching logic
+4. If version detection is working correctly, update user expectation
+5. Consider lowering pain point matching threshold if data exists but isn't matching
+
+---
+
 ## LQS-002 - 2026-01-30T20:15:00Z
 
 **Summary:** Fixed keyword matching + added sub-component visibility
