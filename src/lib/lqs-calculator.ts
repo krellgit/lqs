@@ -129,29 +129,235 @@ function getUSPText(usp: USP): string {
   return usp.point || usp.usp_text || usp.text || '';
 }
 
+// Helper to get intended keywords using strength score thresholds
+function getIntendedKeywords(data: PipelineOutput): any[] {
+  const enriched = data.Keywords?.enriched || [];
+  if (enriched.length === 0) return [];
+
+  const intended: any[] = [];
+
+  // All Primary keywords are always intended
+  const primary = enriched.filter(k => k.priority_tier === 'Primary');
+  intended.push(...primary);
+
+  // If no Primary keywords, treat top Secondary as pseudo-Primary
+  const allSecondary = enriched.filter(k => k.priority_tier === 'Secondary');
+  if (primary.length === 0 && allSecondary.length > 0) {
+    // Top 30% of Secondary become high-priority
+    const sortedSecondary = allSecondary
+      .sort((a, b) => (b.keyword_strength_score || 0) - (a.keyword_strength_score || 0));
+    const pseudoPrimaryCount = Math.ceil(sortedSecondary.length * 0.3);
+    intended.push(...sortedSecondary.slice(0, pseudoPrimaryCount));
+  }
+
+  // Secondary keywords with decent scores (>= 60)
+  // Only add if not already included as pseudo-Primary
+  const secondary = enriched.filter(k =>
+    k.priority_tier === 'Secondary' &&
+    (k.keyword_strength_score || 0) >= 60 &&
+    !intended.includes(k)
+  );
+  // Take top 50% of qualifying Secondary keywords
+  const sortedSecondary = secondary.sort((a, b) => (b.keyword_strength_score || 0) - (a.keyword_strength_score || 0));
+  intended.push(...sortedSecondary.slice(0, Math.ceil(sortedSecondary.length * 0.5)));
+
+  // Long-tail keywords with strong scores (>= 60)
+  const longtail = enriched.filter(k =>
+    k.priority_tier === 'Long-tail' &&
+    (k.keyword_strength_score || 0) >= 60
+  );
+  // Take top 20% of Long-tail
+  const sortedLongtail = longtail.sort((a, b) => (b.keyword_strength_score || 0) - (a.keyword_strength_score || 0));
+  intended.push(...sortedLongtail.slice(0, Math.ceil(sortedLongtail.length * 0.2)));
+
+  // If placement_plan exists, include those regardless of score
+  const withPlacementPlan = enriched.filter(k =>
+    k.placement_plan &&
+    k.placement_plan.length > 0 &&
+    !intended.includes(k)
+  );
+  intended.push(...withPlacementPlan);
+
+  // Target range: 20-40 keywords (realistic for content capacity)
+  const minTarget = 20;
+  const maxTarget = 40;
+
+  if (intended.length < minTarget && enriched.length > 0) {
+    // Add more high-scoring keywords to reach minimum
+    const remaining = enriched
+      .filter(k => !intended.includes(k) && k.priority_tier !== 'Excluded')
+      .sort((a, b) => (b.keyword_strength_score || 0) - (a.keyword_strength_score || 0));
+    const needed = Math.min(minTarget - intended.length, remaining.length);
+    intended.push(...remaining.slice(0, needed));
+  } else if (intended.length > maxTarget) {
+    // Trim to top keywords by score if we have too many
+    intended.sort((a, b) => (b.keyword_strength_score || 0) - (a.keyword_strength_score || 0));
+    intended.splice(maxTarget);
+  }
+
+  return intended;
+}
+
+// Helper to extract meaningful words from text (for concept matching)
+function extractMeaningfulWords(text: string): string[] {
+  // Common stopwords to exclude
+  const stopwords = new Set([
+    'the', 'that', 'this', 'with', 'from', 'about', 'being', 'would', 'could',
+    'including', 'opportunity', 'providing', 'help', 'helps', 'make', 'makes',
+    'when', 'where', 'which', 'while', 'your', 'their', 'those', 'these'
+  ]);
+
+  return text
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(w =>
+      w.length > 3 &&  // Longer than 3 chars
+      !stopwords.has(w) &&
+      /^[a-z-]+$/.test(w)  // Only letters and hyphens
+    );
+}
+
+// Helper to extract n-grams for phrase matching
+function extractNGrams(text: string, n: number = 2): string[] {
+  const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+  const ngrams: string[] = [];
+
+  for (let i = 0; i <= words.length - n; i++) {
+    ngrams.push(words.slice(i, i + n).join(' '));
+  }
+
+  return ngrams;
+}
+
+// Helper to check USP concept coverage with sliding threshold
+function checkUSPCoverage(uspText: string, content: string): {
+  covered: boolean;
+  wordCoverage: number;
+  phraseMatched: boolean;
+  conceptWords: string[];
+  matchedWords: string[];
+} {
+  const conceptWords = extractMeaningfulWords(uspText);
+  const contentLower = content.toLowerCase();
+
+  // Check word coverage
+  const matchedWords = conceptWords.filter(w => contentLower.includes(w));
+  const wordCoverage = conceptWords.length > 0
+    ? matchedWords.length / conceptWords.length
+    : 0;
+
+  // Check phrase coverage (2-grams and 3-grams)
+  const phrases2 = extractNGrams(uspText, 2);
+  const phrases3 = extractNGrams(uspText, 3);
+  const phraseMatched =
+    phrases2.some(p => contentLower.includes(p)) ||
+    phrases3.some(p => contentLower.includes(p));
+
+  // Sliding threshold based on concept complexity
+  let threshold: number;
+  if (conceptWords.length <= 2) {
+    threshold = 1.0;  // Must match all words for very short concepts
+  } else if (conceptWords.length <= 4) {
+    threshold = 0.6;  // 60% for short concepts
+  } else {
+    threshold = 0.5;  // 50% for longer concepts
+  }
+
+  // USP is covered if word coverage meets threshold AND at least one phrase matches
+  // (phrase requirement prevents random word coincidence)
+  // Exception: very short USPs (<=2 words) exempt from phrase requirement
+  const covered = (wordCoverage >= threshold) &&
+    (phraseMatched || conceptWords.length <= 2);
+
+  return {
+    covered,
+    wordCoverage,
+    phraseMatched,
+    conceptWords,
+    matchedWords
+  };
+}
+
 // 1. Keyword Optimization (25%)
 function calculateKeywordOptimization(data: PipelineOutput): DimensionResult {
   const flags: string[] = [];
   const weight = DIMENSION_WEIGHTS.keyword_optimization;
 
-  // Get coverage from existing quality_report
-  const coverage = data.listing_creation?.quality_report?.keyword_coverage ?? 70;
+  // Get intended keywords using strength score thresholds
+  const intendedKeywords = getIntendedKeywords(data);
 
-  // Calculate title placement
-  const primaryKeywords = getKeywords(data, 'primary');
-  const title = data.Content?.title?.toLowerCase() || '';
+  // Build content string
+  const content = [
+    data.Content?.title || '',
+    ...(data.Content?.bullet_points || []),
+    data.Content?.description ?? ''
+  ].join(' ').toLowerCase();
 
-  let primaryInTitle = 0;
-  primaryKeywords.forEach(kw => {
-    if (title.includes(kw)) primaryInTitle++;
+  // Calculate strength-weighted coverage
+  // Using high-value keywords scores better than using low-value ones
+  let totalStrength = 0;
+  let usedStrength = 0;
+  let usedCount = 0;
+
+  intendedKeywords.forEach(kw => {
+    const kwText = getKeywordText(kw).toLowerCase();
+    const strength = kw.keyword_strength_score || 50;
+    totalStrength += strength;
+
+    if (kwText && content.includes(kwText)) {
+      usedCount++;
+      usedStrength += strength;
+    }
   });
 
-  const titlePlacement = primaryKeywords.length > 0
-    ? (primaryInTitle / primaryKeywords.length) * 100
-    : 80;
+  // Weighted coverage: rewards using high-value keywords
+  const weightedCoverage = totalStrength > 0
+    ? (usedStrength / totalStrength) * 100
+    : 70;
 
-  if (primaryInTitle < primaryKeywords.length) {
-    flags.push(`${primaryKeywords.length - primaryInTitle} primary keywords missing from title`);
+  // Simple coverage for flags
+  const simpleCoverage = intendedKeywords.length > 0
+    ? (usedCount / intendedKeywords.length) * 100
+    : 70;
+
+  // Use weighted coverage for scoring (more accurate)
+  const coverage = weightedCoverage;
+
+  if (simpleCoverage < 50) {
+    flags.push(`Low keyword coverage: ${usedCount}/${intendedKeywords.length} intended keywords used (${Math.round(simpleCoverage)}%)`);
+  }
+
+  // Calculate title placement
+  const title = data.Content?.title?.toLowerCase() || '';
+  const enriched = data.Keywords?.enriched || [];
+
+  // Get high-value keywords for title (Primary or top-scoring keywords)
+  let titleKeywords = enriched.filter(k => k.priority_tier === 'Primary');
+
+  // If no Primary keywords, use top 5 by keyword_strength_score
+  if (titleKeywords.length === 0) {
+    titleKeywords = enriched
+      .filter(k => k.keyword_strength_score && k.keyword_strength_score > 60)
+      .sort((a, b) => (b.keyword_strength_score || 0) - (a.keyword_strength_score || 0))
+      .slice(0, 5);
+  }
+
+  let titleInCount = 0;
+  titleKeywords.forEach(kw => {
+    const kwText = getKeywordText(kw).toLowerCase();
+    if (kwText && title.includes(kwText)) {
+      titleInCount++;
+    }
+  });
+
+  // Realistic expectation: 3-5 keywords in title (not all)
+  const expectedInTitle = Math.min(titleKeywords.length, 5);
+  const titlePlacement = expectedInTitle > 0
+    ? (titleInCount / expectedInTitle) * 100
+    : 75;
+
+  if (titlePlacement < 60 && titleKeywords.length > 0) {
+    flags.push(`Only ${titleInCount}/${expectedInTitle} high-value keywords in title`);
   }
 
   // Calculate tier alignment (simplified)
@@ -177,32 +383,49 @@ function calculateTierAlignment(data: PipelineOutput): number {
   const bullets = (data.Content?.bullet_points || []).map(b => b.toLowerCase());
   const description = data.Content?.description?.toLowerCase() ?? '';
 
-  const primary = getKeywords(data, 'primary');
-  const secondary = getKeywords(data, 'secondary');
+  const enriched = data.Keywords?.enriched || [];
+  if (enriched.length === 0) return 80;
+
+  // Get intended keywords by tier
+  const intendedPrimary = enriched.filter(k =>
+    k.priority_tier === 'Primary' &&
+    (k.keyword_strength_score || 0) >= 60
+  );
+
+  const intendedSecondary = enriched.filter(k =>
+    k.priority_tier === 'Secondary' &&
+    (k.keyword_strength_score || 0) >= 70
+  );
 
   let score = 0;
   let maxScore = 0;
 
   // Primary keywords should be in title or top bullets
-  primary.forEach(kw => {
+  intendedPrimary.forEach(kw => {
+    const kwText = getKeywordText(kw).toLowerCase();
+    if (!kwText) return;
+
     maxScore += 1;
-    if (title.includes(kw)) {
+    if (title.includes(kwText)) {
       score += 1;
-    } else if (bullets.slice(0, 2).some(b => b.includes(kw))) {
+    } else if (bullets.slice(0, 2).some(b => b.includes(kwText))) {
       score += 0.75;
-    } else if (bullets.some(b => b.includes(kw))) {
+    } else if (bullets.some(b => b.includes(kwText))) {
       score += 0.5;
-    } else if (description.includes(kw)) {
+    } else if (description.includes(kwText)) {
       score += 0.25;
     }
   });
 
   // Secondary keywords should be in bullets
-  secondary.forEach(kw => {
+  intendedSecondary.forEach(kw => {
+    const kwText = getKeywordText(kw).toLowerCase();
+    if (!kwText) return;
+
     maxScore += 1;
-    if (bullets.some(b => b.includes(kw))) {
+    if (bullets.some(b => b.includes(kwText))) {
       score += 1;
-    } else if (description.includes(kw)) {
+    } else if (description.includes(kwText)) {
       score += 0.75;
     }
   });
@@ -218,14 +441,41 @@ function calculateUSPEffectiveness(data: PipelineOutput): DimensionResult {
   const approvedUSPs = getApprovedUSPs(data);
   const totalUSPs = approvedUSPs.length;
 
-  // Calculate coverage (how many USPs are mentioned in content)
-  const content = [data.Content?.title || '', ...(data.Content?.bullet_points || [])].join(' ').toLowerCase();
-  const uspsInContent = approvedUSPs.filter(usp => {
-    const uspText = getUSPText(usp).toLowerCase();
-    return uspText && content.includes(uspText.substring(0, 30)); // Match first 30 chars
-  }).length;
+  // Calculate coverage using concept matching (not exact phrase matching)
+  const content = [
+    data.Content?.title || '',
+    ...(data.Content?.bullet_points || [])
+  ].join(' ');
 
-  const coverage = totalUSPs > 0 ? (uspsInContent / totalUSPs) * 100 : 70;
+  let coveredCount = 0;
+  let totalWordCoverage = 0;
+
+  approvedUSPs.forEach(usp => {
+    const uspText = getUSPText(usp);
+    if (!uspText) return;
+
+    const result = checkUSPCoverage(uspText, content);
+
+    if (result.covered) {
+      coveredCount++;
+    }
+
+    totalWordCoverage += result.wordCoverage;
+
+    // Add debug flags for low coverage USPs
+    if (!result.covered && result.conceptWords.length > 0) {
+      const coveragePct = Math.round(result.wordCoverage * 100);
+      if (coveragePct < 30) {
+        flags.push(`USP concept poorly integrated: "${uspText.substring(0, 50)}..." (${coveragePct}% concept overlap)`);
+      }
+    }
+  });
+
+  const coverage = totalUSPs > 0 ? (coveredCount / totalUSPs) * 100 : 70;
+
+  if (coverage < 60 && totalUSPs > 0) {
+    flags.push(`Low USP integration: ${coveredCount}/${totalUSPs} USP concepts adequately covered`);
+  }
 
   // Calculate differentiation
   const differentiation = calculateDifferentiation(data);

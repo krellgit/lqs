@@ -64,6 +64,7 @@ export interface USP {
   pains?: string[];
   desires?: string[];
   themes?: string[];
+  placement_plan?: string[]; // e.g., ["bullet_point_2", "description"]
 
   // Legacy fields
   id?: string;
@@ -80,6 +81,7 @@ export interface Keyword {
   keyword_strength_score?: number;
   tier_notes?: string;
   demand_tier?: string;
+  placement_plan?: string[]; // e.g., ["title", "bullet_point_1"]
 
   // Legacy fields
   keyword?: string;
