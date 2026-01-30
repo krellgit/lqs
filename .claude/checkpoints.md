@@ -1,5 +1,74 @@
 # LQS Calculator Checkpoints
 
+## LQS-002 - 2026-01-30T20:15:00Z
+
+**Summary:** Fixed keyword matching + added sub-component visibility
+
+**Goal:** Correct keyword matching logic (was too strict with exact phrase matching) and add visual sub-component breakdowns to table and stats overview
+
+**Status:** Complete
+
+**Changes:**
+1. Fixed keyword matching to use word-level partial credit (not exact phrase only)
+2. Added status dots (●/○) under each dimension score in table rows
+3. Added aggregate dimension averages to stats overview
+4. Added "Top Problem Areas" section showing weakest sub-components
+5. Created stats-aggregation utility functions for calculating averages
+6. Implemented 3-tier progressive disclosure per Opus recommendations
+7. All changes deployed to production
+
+**Files modified:**
+1. src/lib/lqs-calculator.ts (keyword matching logic)
+2. src/lib/stats-aggregation.ts (NEW - aggregate calculation utilities)
+3. src/components/StatsOverview.tsx (dimension averages + problem areas)
+4. src/components/ScoresTable.tsx (status dots per dimension)
+
+**Commits:**
+1. 0b524db - Add sub-component breakdowns to table and stats overview
+2. 2b71801 - Fix keyword matching: use word-level partial credit
+
+**Key decisions:**
+
+1. **Implement word-level partial credit for keyword matching**
+   - User validation revealed: Intended keywords ARE applied in content, but as separate words not exact phrases
+   - Example: "knee pain" appears as "knee" and "pain" in different parts of content
+   - Impact: Coverage went from 34% to 82% (accurately reflects keyword integration)
+   - Scoring: Exact phrase (100%), all words present (90%), 75% words (70%), 50% words (50%)
+   - Alternative rejected: Keep exact matching (produces false negatives)
+
+2. **Use status dots (●/○) for sub-component visibility**
+   - Rationale: Need to show 2-3 sub-scores per dimension without cluttering table
+   - Green dots (●) for scores >= 70, red dots (○) for < 70
+   - Visual pattern scanning: ●●● = all good, ○○○ = all bad, ●○● = mixed
+   - Adds only ~8px row height (minimal impact)
+   - Alternative rejected: Hover tooltips only (doesn't enable cross-row scanning)
+
+3. **Add aggregate stats with expandable problem areas**
+   - Shows dimension averages (6 scores) always visible
+   - "Top Problem Areas" expandable (5 weakest sub-components)
+   - Problem-first design surfaces systemic issues immediately
+   - Example: "Keyword Coverage avg 34" → reveals this is a systemic issue, not individual ASIN problem
+   - Alternative rejected: Show all 18 sub-components always (too overwhelming)
+
+4. **Parallel agent approach (ralph-loop + swarm)**
+   - Spawned 3 Opus agents simultaneously for comprehensive design analysis
+   - Agent 1: Row breakdown design (3 options analyzed)
+   - Agent 2: Stats overview design (3 options analyzed)
+   - Agent 3: Utility functions (clean implementation)
+   - Synthesized recommendations into hybrid approach
+   - Alternative rejected: Sequential design (would take longer)
+
+**Blockers:** None
+
+**Next steps:**
+1. Review actual production scores at lqs.krell.works
+2. Validate that new coverage scores (70-90%) align with content quality
+3. Check if sub-component dots reveal useful patterns
+4. Identify systemic issues in "Top Problem Areas"
+5. Consider adding hover tooltips for detailed sub-component info (future enhancement)
+
+---
+
 ## LQS-001 - 2026-01-30T19:51:00Z
 
 **Summary:** Fixed LQS logic + added content display UI
