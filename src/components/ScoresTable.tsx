@@ -1,6 +1,7 @@
 'use client';
 
 import { LQSResult, Grade } from '@/lib/types';
+import ExpandedContent from './ExpandedContent';
 
 interface ScoreEntry {
   asin: string;
@@ -9,12 +10,20 @@ interface ScoreEntry {
   lqs: LQSResult;
   lastModified: string;
   fileName: string;
+  content: {
+    title: string;
+    bullet_points: string[];
+    description?: string;
+    backend_keywords?: string[];
+  };
 }
 
 interface ScoresTableProps {
   scores: ScoreEntry[];
   onSelect: (entry: ScoreEntry) => void;
   selectedAsin: string | null;
+  expandedRows: Set<string>;
+  onToggleExpand: (asin: string) => void;
 }
 
 const gradeColors: Record<Grade, string> = {
@@ -31,18 +40,21 @@ function getScoreColor(score: number): string {
   return 'text-red-600 dark:text-red-400';
 }
 
-export default function ScoresTable({ scores, onSelect, selectedAsin }: ScoresTableProps) {
+export default function ScoresTable({ scores, onSelect, selectedAsin, expandedRows, onToggleExpand }: ScoresTableProps) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-900">
             <tr>
+              <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-8">
+
+              </th>
               <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 ASIN
               </th>
               <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Product
+                Title Preview
               </th>
               <th scope="col" className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 LQS
@@ -76,75 +88,130 @@ export default function ScoresTable({ scores, onSelect, selectedAsin }: ScoresTa
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
             {scores.map((entry) => {
               const isSelected = selectedAsin === entry.asin;
+              const isExpanded = expandedRows.has(entry.asin);
               const dims = entry.lqs.dimensions;
               const totalFlags = Object.values(dims).reduce((sum, d) => sum + d.flags.length, 0);
+              const titlePreview = entry.content.title.length > 60
+                ? entry.content.title.substring(0, 60) + '...'
+                : entry.content.title;
 
               return (
-                <tr
-                  key={entry.asin}
-                  onClick={() => onSelect(entry)}
-                  className={`cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'bg-blue-50 dark:bg-blue-900/20'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                  }`}
-                >
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {entry.asin}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-sm text-gray-900 dark:text-gray-100 max-w-xs truncate" title={entry.productName}>
-                      {entry.productName}
-                    </div>
-                    {entry.msku && (
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        MSKU: {entry.msku}
+                <>
+                  <tr
+                    key={entry.asin}
+                    className={`cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-blue-50 dark:bg-blue-900/20'
+                        : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                    }`}
+                  >
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleExpand(entry.asin);
+                        }}
+                        className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                      >
+                        <svg
+                          className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    </td>
+                    <td
+                      onClick={() => onSelect(entry)}
+                      className="px-4 py-3 whitespace-nowrap"
+                    >
+                      <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {entry.asin}
+                      </span>
+                    </td>
+                    <td
+                      onClick={() => onSelect(entry)}
+                      className="px-4 py-3"
+                    >
+                      <div className="text-sm text-gray-900 dark:text-gray-100 max-w-md" title={entry.content.title}>
+                        {titlePreview}
                       </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-center">
+                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        <span title="Bullet points">📝 {entry.content.bullet_points.length}/5</span>
+                        <span title="Description">{entry.content.description ? `📄 ${entry.content.description.length}ch` : '📄 None'}</span>
+                        <span title="Keywords">🏷️ {entry.content.backend_keywords?.length || 0}/10</span>
+                      </div>
+                    </td>
+                  <td
+                    onClick={() => onSelect(entry)}
+                    className="px-4 py-3 text-center"
+                  >
                     <span className={`text-lg font-bold ${getScoreColor(entry.lqs.lqs_total)}`}>
                       {entry.lqs.lqs_total}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td
+                    onClick={() => onSelect(entry)}
+                    className="px-4 py-3 text-center"
+                  >
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-bold ${gradeColors[entry.lqs.grade as Grade]}`}>
                       {entry.lqs.grade}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td
+                    onClick={() => onSelect(entry)}
+                    className="px-4 py-3 text-center"
+                  >
                     <span className={`text-sm font-medium ${getScoreColor(dims.keyword_optimization.score)}`}>
                       {dims.keyword_optimization.score}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td
+                    onClick={() => onSelect(entry)}
+                    className="px-4 py-3 text-center"
+                  >
                     <span className={`text-sm font-medium ${getScoreColor(dims.usp_effectiveness.score)}`}>
                       {dims.usp_effectiveness.score}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td
+                    onClick={() => onSelect(entry)}
+                    className="px-4 py-3 text-center"
+                  >
                     <span className={`text-sm font-medium ${getScoreColor(dims.readability.score)}`}>
                       {dims.readability.score}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td
+                    onClick={() => onSelect(entry)}
+                    className="px-4 py-3 text-center"
+                  >
                     <span className={`text-sm font-medium ${getScoreColor(dims.competitive_position.score)}`}>
                       {dims.competitive_position.score}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td
+                    onClick={() => onSelect(entry)}
+                    className="px-4 py-3 text-center"
+                  >
                     <span className={`text-sm font-medium ${getScoreColor(dims.customer_alignment.score)}`}>
                       {dims.customer_alignment.score}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td
+                    onClick={() => onSelect(entry)}
+                    className="px-4 py-3 text-center"
+                  >
                     <span className={`text-sm font-medium ${getScoreColor(dims.compliance.score)}`}>
                       {dims.compliance.score}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td
+                    onClick={() => onSelect(entry)}
+                    className="px-4 py-3 text-center"
+                  >
                     {totalFlags > 0 ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
                         {totalFlags}
@@ -154,6 +221,15 @@ export default function ScoresTable({ scores, onSelect, selectedAsin }: ScoresTa
                     )}
                   </td>
                 </tr>
+                {isExpanded && (
+                  <ExpandedContent
+                    asin={entry.asin}
+                    content={entry.content}
+                    onViewFull={() => onSelect(entry)}
+                    onCollapse={() => onToggleExpand(entry.asin)}
+                  />
+                )}
+              </>
               );
             })}
           </tbody>

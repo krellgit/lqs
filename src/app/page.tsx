@@ -7,6 +7,7 @@ import ScoreCard from '@/components/ScoreCard';
 import RadarChart from '@/components/RadarChart';
 import DimensionBreakdown from '@/components/DimensionBreakdown';
 import Recommendations from '@/components/Recommendations';
+import ContentTab from '@/components/ContentTab';
 import { LQSResult } from '@/lib/types';
 
 interface ScoreEntry {
@@ -16,6 +17,12 @@ interface ScoreEntry {
   lqs: LQSResult;
   lastModified: string;
   fileName: string;
+  content: {
+    title: string;
+    bullet_points: string[];
+    description?: string;
+    backend_keywords?: string[];
+  };
 }
 
 interface ScoresResponse {
@@ -43,6 +50,8 @@ export default function Home() {
   const [selectedEntry, setSelectedEntry] = useState<ScoreEntry | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [meta, setMeta] = useState<ScoresResponse['meta'] | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<'analysis' | 'content'>('analysis');
 
   const fetchScores = useCallback(async () => {
     setLoadingState('loading');
@@ -80,6 +89,7 @@ export default function Home() {
 
   const handleSelect = (entry: ScoreEntry) => {
     setSelectedEntry(entry);
+    setActiveTab('analysis'); // Reset to analysis tab
     // Scroll to detail section
     setTimeout(() => {
       document.getElementById('detail-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -88,6 +98,18 @@ export default function Home() {
 
   const handleCloseDetail = () => {
     setSelectedEntry(null);
+  };
+
+  const toggleRowExpansion = (asin: string) => {
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(asin)) {
+        newSet.delete(asin);
+      } else {
+        newSet.add(asin);
+      }
+      return newSet;
+    });
   };
 
   return (
@@ -210,6 +232,8 @@ export default function Home() {
                 scores={scores}
                 onSelect={handleSelect}
                 selectedAsin={selectedEntry?.asin || null}
+                expandedRows={expandedRows}
+                onToggleExpand={toggleRowExpansion}
               />
             </div>
 
@@ -218,7 +242,7 @@ export default function Home() {
               <div id="detail-section" className="space-y-4 pt-4 border-t-4 border-blue-500">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
-                    Detailed Analysis: {selectedEntry.asin}
+                    {selectedEntry.asin}
                   </h2>
                   <button
                     onClick={handleCloseDetail}
@@ -231,20 +255,51 @@ export default function Home() {
                   </button>
                 </div>
 
-                {/* Two column layout for detail */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Left column */}
-                  <div className="space-y-4">
-                    <ScoreCard result={selectedEntry.lqs} />
-                    <RadarChart result={selectedEntry.lqs} />
-                  </div>
-
-                  {/* Right column */}
-                  <div className="space-y-4">
-                    <Recommendations recommendations={selectedEntry.lqs.recommendations} />
-                    <DimensionBreakdown result={selectedEntry.lqs} />
-                  </div>
+                {/* Tabs */}
+                <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700">
+                  <button
+                    onClick={() => setActiveTab('analysis')}
+                    className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+                      activeTab === 'analysis'
+                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                        : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    Analysis
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('content')}
+                    className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+                      activeTab === 'content'
+                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                        : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    Content
+                  </button>
                 </div>
+
+                {/* Tab Content */}
+                {activeTab === 'analysis' ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Left column */}
+                    <div className="space-y-4">
+                      <ScoreCard result={selectedEntry.lqs} />
+                      <RadarChart result={selectedEntry.lqs} />
+                    </div>
+
+                    {/* Right column */}
+                    <div className="space-y-4">
+                      <Recommendations recommendations={selectedEntry.lqs.recommendations} />
+                      <DimensionBreakdown result={selectedEntry.lqs} />
+                    </div>
+                  </div>
+                ) : (
+                  <ContentTab
+                    asin={selectedEntry.asin}
+                    content={selectedEntry.content}
+                  />
+                )}
               </div>
             )}
           </div>
