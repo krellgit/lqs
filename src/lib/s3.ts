@@ -24,7 +24,9 @@ export interface S3ReportFile {
  */
 function extractAsinFromKey(key: string): string {
   const filename = key.split('/').pop() || key;
-  const asinMatch = filename.match(/\b(B[A-Z0-9]{9})\b/i);
+  // Match ASIN at start of filename (before underscore or other delimiter)
+  // Cannot use \b because underscore is a word character
+  const asinMatch = filename.match(/^(B[A-Z0-9]{9})(?:_|\.json$)/i);
   if (asinMatch) {
     return asinMatch[1].toUpperCase();
   }
